@@ -3,7 +3,7 @@ import "./App.css";
 import { Loader } from "@googlemaps/js-api-loader";
 
 const loader = new Loader({
-    apiKey: "",
+    apiKey: "", // google maps api key
     version: "weekly",
     libraries: ["places"],
 });
@@ -15,6 +15,23 @@ const mapOptions = {
     },
     zoom: 4,
 };
+
+/**
+ * vis params properties are the properties of the earth engine layer
+ * this would be the bands which map to RGB values and their respective min maxes
+ */
+const visParams = {
+    bands: ['slope'],
+    min: [0],
+    max: [60]
+}
+
+// example vis params for 3 bands
+// const visParams = {
+//     bands: ['R', 'G', 'B'],
+//     min: [0, 0, 0],
+//     max: [0.4, 0.4, 0.4]
+// }
 
 var google;
 var map;
@@ -170,7 +187,7 @@ function App() {
     let createOverlayMap = () => {
         console.log("google is", google)
         console.log("map is", map)
-        let url = "";
+        let url = "http://localhost:3000/getTiles/{z}/{x}/{y}";
 
         SRTMmap = new google.maps.ImageMapType({
             getTileUrl: function (coord, zoom) {
@@ -180,9 +197,6 @@ function App() {
                     .replace("{y}", coord.y)
                     .replace("{z}", zoom);
             
-                    console.log(
-                        `getting map url ${tileUrl}`
-                    );
                 function loadImage() {
                     let img = new Image();
                     img.src = tileUrl;
@@ -208,14 +222,6 @@ function App() {
             var tileCoordinate = calculateTileCoordinateFromLatLng(mapsMouseEvent.latLng, map.getZoom(), 256)
             var internalPixelCoordinate = calculateInternalTilePixelCoordinate(mapsMouseEvent.latLng, 256, map.getZoom());
 
-            var content = `
-Lat: ${mapsMouseEvent.latLng.lat()}, Lng: ${mapsMouseEvent.latLng.lng()}
-Tile coordinates: ${tileCoordinate.x}, ${tileCoordinate.y}
-Internal tile pixel coordinates: ${internalPixelCoordinate.x}, ${internalPixelCoordinate.y}
-`
-
-            console.log(content)            
-
             let currentZoom = map.getZoom()
             let tile = tiles[`${tileCoordinate.x}${tileCoordinate.y}${currentZoom}`]
 
@@ -230,12 +236,31 @@ Internal tile pixel coordinates: ${internalPixelCoordinate.x}, ${internalPixelCo
             // do I need to flip the x and y as it starts from top left in the tile x,y
             // causes cors error due on getImageData call
             let pixelValue = canvas.getContext('2d').getImageData(internalPixelCoordinate.x, internalPixelCoordinate.y, 1, 1).data;
-            console.log("got pixel value", pixelValue)
 
-            // current doesn't work but would get pixel value then we could fit between min and maxes across bands
-            // then we would be able to say this pixel value
+            let bandInfoText = "";
 
-            console.log("map mouse event", mapsMouseEvent)
+            visParams.bands.forEach((band, index) => {
+                let range = visParams.max[index] - visParams.min[index]
+                let step = range / 255
+                let bandColourValue = pixelValue[index]
+                let bandValue = visParams.min[index] + (bandColourValue * step)
+                bandInfoText += `\n${band}: ${bandValue}`
+            })
+
+
+            var content = `
+<span id="infoWindow">
+Lat: ${mapsMouseEvent.latLng.lat()}, Lng: ${mapsMouseEvent.latLng.lng()} <br/>
+Tile coordinates: ${tileCoordinate.x}, ${tileCoordinate.y} <br/>
+Internal tile pixel coordinates: ${internalPixelCoordinate.x}, ${internalPixelCoordinate.y} <br/>
+R: ${pixelValue[0]}, G: ${pixelValue[1]}, B: ${pixelValue[2]}, alpha: ${pixelValue[3]} <br/>
+${bandInfoText} 
+</span>
+`
+            
+            console.log(content)            
+           
+
             if(infoWindow) infoWindow.close()
             
             infoWindow = new google.maps.InfoWindow({
